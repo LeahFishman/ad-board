@@ -37,6 +37,25 @@
     <button mat-stroked-button type="button" (click)="nextPage()" [disabled]="page() >= ((totalPages$ | async) || 1)">Next »</button>
   </section>
 
+  <section class="location-filter" aria-label="Location filter">
+    <div class="location-filter__controls">
+      <mat-form-field appearance="outline">
+        <mat-label>Radius</mat-label>
+        <mat-select [value]="radiusKm() ?? 'No limit'" (selectionChange)="changeRadius($event.value)">
+          <mat-option [value]="'No limit'">No limit</mat-option>
+          <ng-container *ngFor="let r of radiusOptions">
+            <mat-option [value]="r">{{ r }} km</mat-option>
+          </ng-container>
+        </mat-select>
+      </mat-form-field>
+      @if (currentLat != null && currentLng != null) {
+        <span class="location-filter__coords">Using your location</span>
+      } @else {
+        <span class="location-filter__coords">Location access denied</span>
+      }
+    </div>
+  </section>
+
   <div class="board-actions">
     <ng-container *ngIf="token(); else needLogin">
       <button mat-flat-button color="primary" type="button" (click)="openAddDialog()" *ngIf="canAdd()">Add new post</button>
@@ -98,7 +117,7 @@
             </mat-form-field>
             <mat-form-field appearance="outline">
               <mat-label>Location</mat-label>
-              <input matInput formControlName="locationLabel" class="ad-card__edit-input" placeholder="Location" />
+              <input #editAreaInput matInput formControlName="locationLabel" class="ad-card__edit-input" placeholder="Location" />
             </mat-form-field>
             <div class="ad-card__edit-actions">
               <button type="submit" mat-flat-button color="primary" [disabled]="editForm.invalid">Save</button>

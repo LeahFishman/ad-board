@@ -1,0 +1,13 @@
+<div class="location-picker">
+  <google-map
+    [height]="height"
+    [zoom]="zoom"
+    [center]="center"
+    (mapClick)="onMapClick($event)">
+    <map-marker *ngIf="markerPosition" [position]="markerPosition"></map-marker>
+  </google-map>
+  <div class="location-picker__coords" *ngIf="markerPosition as pos">
+    <span>Lat: {{ pos.lat | number:'1.6-6' }}</span>
+    <span>Lng: {{ pos.lng | number:'1.6-6' }}</span>
+  </div>
+</div>

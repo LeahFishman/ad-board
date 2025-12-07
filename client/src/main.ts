@@ -1,6 +1,12 @@
 import { bootstrapApplication } from '@angular/platform-browser';
 import { appConfig } from './app/app.config';
 import { AppComponent } from './app/app';
+import { importProvidersFrom } from '@angular/core';
+import { GoogleMapsModule } from '@angular/google-maps';
 
-bootstrapApplication(AppComponent, appConfig)
-  .catch((err) => console.error(err));
+bootstrapApplication(AppComponent, {
+  providers: [
+    ...appConfig.providers!,
+    importProvidersFrom(GoogleMapsModule)
+  ]
+}).catch((err) => console.error(err));

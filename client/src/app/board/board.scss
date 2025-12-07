@@ -71,6 +71,9 @@
   padding: 0.5rem 0.75rem;
   box-shadow: var(--shadow);
 }
+.location-filter { margin: 0.5rem 0 1rem; }
+.location-filter__controls { display: flex; align-items: center; gap: 0.75rem; }
+.location-filter__coords { color: var(--muted); font-size: 0.85rem; }
 .search-bar__icon { font-size: 1.1rem; }
 .search-bar__input { border: 0; outline: none; padding: 0.5rem; font-size: 0.95rem; }
 .search-bar__button { padding: 0.5rem 0.9rem; border-radius: 0.5rem; border: 0; background: #f97316; color: #fff; font-weight: 600; cursor: pointer; }

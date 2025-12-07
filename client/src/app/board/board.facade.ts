@@ -3,7 +3,10 @@ import { toObservable } from '@angular/core/rxjs-interop';
 import { BehaviorSubject, Subject, combineLatest, of, Observable } from 'rxjs';
 import { catchError, debounceTime, distinctUntilChanged, map, shareReplay, switchMap, tap } from 'rxjs/operators';
 import { startWith } from 'rxjs';
-import { AdsService, Ad, PagedResult, AdCreate, AdUpdate } from '../ads.service';
+import { AdsService } from '../services/ads.service';
+import { Ad } from '../shared/models/ad';
+import { PagedResult } from '../shared/models/paged-result';
+import { AdCreate, AdUpdate } from '../shared/models/ad-change';
 
 @Injectable({ providedIn: 'root' })
 export class BoardFacade {
@@ -12,6 +15,9 @@ export class BoardFacade {
   readonly pageSize = signal(20);
   readonly categoryFilter = signal<string | null>(null);
   readonly locationFilter = signal<string | null>(null);
+  readonly currentLat = signal<number | null>(null);
+  readonly currentLng = signal<number | null>(null);
+  readonly radiusKm = signal<number>(5);
   readonly searchTerm = new BehaviorSubject<string>('');
   private readonly refresh$ = new Subject<void>();
 
@@ -32,16 +38,22 @@ export class BoardFacade {
     toObservable(this.pageSize),
     toObservable(this.categoryFilter),
     toObservable(this.locationFilter),
+    toObservable(this.currentLat),
+    toObservable(this.currentLng),
+    toObservable(this.radiusKm),
     this.refresh$.pipe(startWith(undefined))
   ]).pipe(
     tap(() => this.loading.set(true)),
-    switchMap(([search, page, pageSize, category, location]) =>
-      this.ads.getAds({ 
-        search: (search ?? '').trim(), 
-        page, 
-        pageSize, 
-        category: category ?? undefined, 
-        location: location ?? undefined
+    switchMap(([search, page, pageSize, category, location, lat, lng, radiusKm]) =>
+      this.ads.getAds({
+        search: (search ?? '').trim(),
+        page,
+        pageSize,
+        category: category ?? undefined,
+        location: location ?? undefined,
+        lat: lat ?? undefined,
+        lng: lng ?? undefined,
+        radiusKm: lat != null && lng != null && radiusKm != null ? radiusKm as number : undefined
       })
     ),
     tap(() => { this.errorMessage.set(null); this.loading.set(false); }),
@@ -66,12 +78,12 @@ export class BoardFacade {
   ]).pipe(
     map(([r, removed, overlay, created, page]) => {
       const base = r.items
-        .filter(item => !removed.has(item.id))
-        .map(item => ({ ...item, ...(overlay[item.id] || {}) }));
+        .filter((item: Ad) => !removed.has(item.id))
+        .map((item: Ad) => ({ ...item, ...(overlay[item.id] || {}) }));
       if (page === 1 && created.length) {
         const notDuplicate = created
           .filter(c => !removed.has(c.id))
-          .filter(c => !base.some(b => b.id === c.id));
+          .filter(c => !base.some((b: Ad) => b.id === c.id));
         return [...notDuplicate, ...base];
       }
       return base;
@@ -123,6 +135,13 @@ export class BoardFacade {
   changeLocation(value: string | null) {
     this.page.set(1);
     this.locationFilter.set((value ?? '').trim() === '' ? null : value);
+  }
+  setLocationFilter(lat: number, lng: number, radiusKm: number | null | undefined) {
+    this.currentLat.set(lat);
+    this.currentLng.set(lng);
+    this.radiusKm.set((radiusKm ?? null) as any);
+    this.page.set(1);
+    this.searchTerm.next(this.searchTerm.getValue() || '');
   }
   nextPage() { this.page.update(p => p + 1); }
   prevPage() { this.page.update(p => Math.max(1, p - 1)); }

@@ -1,0 +1,9 @@
+.ad-form { display: block; padding:20px}
+.ad-form__title { margin: 0 0 12px; font-size: 20px; }
+.ad-form__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ad-form__field { width: 100%; }
+.ad-form__field--half { grid-column: span 1; }
+.ad-form__field--full { grid-column: 1 / -1; }
+.ad-form__field--inline-textarea textarea { resize: vertical; }
+.ad-form__coords { grid-column: 1 / -1; display: flex; gap: 16px; color: var(--muted); }
+.ad-form__actions { grid-column: 1 / -1; display: flex; gap: 12px; justify-content: flex-end; }

@@ -1,9 +1,9 @@
-import { Component, ChangeDetectionStrategy, signal, TemplateRef, ViewChild, effect, inject } from '@angular/core';
+import { Component, ChangeDetectionStrategy, signal, TemplateRef, ViewChild, ElementRef, AfterViewInit, effect, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { ReactiveFormsModule, NonNullableFormBuilder, Validators, FormGroup } from '@angular/forms';
 import { firstValueFrom, Observable } from 'rxjs';
-import { AdCreate, AdUpdate } from '../ads.service';
+import { AdCreate, AdUpdate } from '../shared/models/ad-change';
 import { BoardFacade } from './board.facade';
 import { AuthService } from '../auth.service';
 import { CATEGORIES } from '../shared/categories';
@@ -19,6 +19,8 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { ErrorDialogComponent } from '../shared/error-dialog';
 import { AddAdDialogComponent } from './add-ad-dialog';
+import { EditAdDialogComponent } from './edit-ad-dialog';
+import { MatSelectModule as MatSelect } from '@angular/material/select';
 
 @Component({
   selector: 'app-board',
@@ -37,13 +39,14 @@ import { AddAdDialogComponent } from './add-ad-dialog';
     MatButtonModule,
     MatDialogModule,
     MatIconModule
-    , MatProgressSpinnerModule
+    , MatProgressSpinnerModule,
+    MatSelect
   ],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class BoardComponent {
+export class BoardComponent implements AfterViewInit {
   // Facade-backed streams
-  readonly ads$: Observable<import('../ads.service').Ad[]>;
+  readonly ads$: Observable<import('../shared/models/ad').Ad[]>;
   readonly totalPages$: Observable<number>;
   readonly loading: any;
   readonly page: any;
@@ -53,8 +56,13 @@ export class BoardComponent {
   // Inline create error (used by dialog submit feedback)
   readonly createError = signal<string | null>(null);
   readonly categories = CATEGORIES;
+  readonly radiusOptions = [2, 5, 10, 20, 50, 100] as const;
+  currentLat: number | null = null;
+  currentLng: number | null = null;
+  radiusKm = signal<number | null>(5);
   editForm!: FormGroup;
   newAdForm!: FormGroup;
+  @ViewChild('editAreaInput', { static: false }) editAreaInput!: ElementRef<HTMLInputElement>;
 
   trackById(_: number, item: { id: string }) { return item.id; }
 
@@ -63,12 +71,14 @@ export class BoardComponent {
   async addAd() {
     // If opened via standalone dialog, we expect the dialog result to have been passed instead
     if (this.newAdForm.invalid) return;
-    const { title, description, category, locationLabel, imageUrl } = this.newAdForm.getRawValue() as { 
+    const { title, description, category, locationLabel, imageUrl, latitude, longitude } = this.newAdForm.getRawValue() as { 
       title: string; 
       description: string; 
       category: string; 
       locationLabel: string; 
       imageUrl: string; 
+      latitude: number | null; 
+      longitude: number | null; 
     };
     const location = (locationLabel || '').trim();
     const payload: AdCreate = {
@@ -76,7 +86,9 @@ export class BoardComponent {
       description: description!,
       category: category!,
       location,
-      imageUrl: imageUrl || undefined
+      imageUrl: imageUrl || undefined,
+      latitude: latitude ?? null,
+      longitude: longitude ?? null
     };
     try {
       this.creating.set(true);
@@ -133,18 +145,33 @@ export class BoardComponent {
   editingId = signal<string | null>(null);
 
   async startEdit(adId: string) {
-    this.editingId.set(adId);
     const ads = await firstValueFrom(this.ads$) as any[];
     const ad = ads.find((a: any) => a.id === adId);
-    if (ad) {
-      this.editForm.reset({
-        title: ad.title ?? '',
-        description: ad.shortDescription ?? ad.description ?? '',
-        imageUrl: ad.imageUrl ?? '',
-        category: ad.category ?? CATEGORIES[0]!,
-        locationLabel: ad.location ?? ''
-      });
-    }
+    if (!ad) return;
+    const ref = this.dialog.open(EditAdDialogComponent, { width: '720px', data: { categories: this.categories, ad } });
+    ref.afterClosed().subscribe(async (result) => {
+      if (!result) return;
+      const payload: AdUpdate = {
+        title: result.title ?? ad.title ?? '',
+        description: result.description ?? ad.description ?? '',
+        imageUrl: result.imageUrl || undefined,
+        category: result.category ?? ad.category ?? CATEGORIES[0]!,
+        location: result.locationLabel ?? ad.location ?? '',
+        latitude: result.latitude ?? null,
+        longitude: result.longitude ?? null
+      };
+      try {
+        await this.facade.updateAd(adId, payload);
+      } catch (e: any) {
+        if (e?.status === 401) {
+          this.errorMessage.set('Unauthorized: Please sign in to edit posts.');
+        } else if (e?.status === 403) {
+          this.errorMessage.set('Forbidden: You do not have permission to edit this post.');
+        } else {
+          this.errorMessage.set('Failed to update the post.');
+        }
+      }
+    });
   }
 
   async saveEdit(adId: string) {
@@ -154,14 +181,18 @@ export class BoardComponent {
       description: string; 
       imageUrl: string; 
       category: string; 
-      locationLabel: string; 
+      locationLabel: string;
+      latitude: number | null;
+      longitude: number | null;
     };
     const payload: AdUpdate = {
       title: updated.title!,
       description: updated.description!,
       imageUrl: updated.imageUrl || undefined,
       category: updated.category!,
-      location: updated.locationLabel || ''
+      location: updated.locationLabel || '',
+      latitude: updated.latitude ?? null,
+      longitude: updated.longitude ?? null
     };
     try {
       await this.facade.updateAd(adId, payload);
@@ -209,7 +240,9 @@ export class BoardComponent {
       description: ['', [Validators.required, Validators.minLength(5)]],
       imageUrl: [''],
       category: [CATEGORIES[0]!, [Validators.required]],
-      locationLabel: ['']
+      locationLabel: [''],
+      latitude: [null as number | null],
+      longitude: [null as number | null]
     });
 
     this.newAdForm = this.fb.group({
@@ -217,13 +250,30 @@ export class BoardComponent {
       description: ['', [Validators.required, Validators.minLength(5)]],
       category: [CATEGORIES[0]!, [Validators.required]],
       locationLabel: [''],
-      imageUrl: ['']
+      imageUrl: [''],
+      latitude: [null as number | null],
+      longitude: [null as number | null]
     });
     
     const userName = this.loggedInUser();
     if (userName) this.currentUser.set(userName);
     // kick initial empty search
     this.facade.onSearchChange('');
+
+    // Geolocation on init
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          this.currentLat = pos.coords.latitude;
+          this.currentLng = pos.coords.longitude;
+          this.facade.setLocationFilter(this.currentLat!, this.currentLng!, this.radiusKm());
+        },
+        () => {
+          // denied or unavailable; load normally
+        },
+        { enableHighAccuracy: false, timeout: 5000 }
+      );
+    }
 
     // Open a Material dialog when errorMessage is set
     effect(() => {
@@ -241,6 +291,16 @@ export class BoardComponent {
         });
       }
     });
+  }
+  changeRadius(value: number | 'No limit') {
+    const radius = value === 'No limit' ? null : value as number;
+    this.radiusKm.set(radius);
+    if (this.currentLat != null && this.currentLng != null) {
+      this.facade.setLocationFilter(this.currentLat, this.currentLng, radius ?? undefined as any);
+    } else {
+      // Trigger a refresh to apply removal of radius in case coords appear later
+      this.facade.refresh();
+    }
   }
 
   openAddDialog() {
@@ -278,4 +338,7 @@ export class BoardComponent {
   nextPage() { this.facade.nextPage(); }
 
   prevPage() { this.facade.prevPage(); }
+
+  ngAfterViewInit(): void { /* edit now uses dialog */ }
+  // Inline edit autocomplete removed; dialog component manages autocomplete
 }

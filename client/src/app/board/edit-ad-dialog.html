@@ -1,0 +1,45 @@
+<section class="ad-form" aria-label="Edit post">
+  <h2 class="ad-form__title">Edit post</h2>
+  <form [formGroup]="form" (ngSubmit)="submit()" class="ad-form__grid">
+    <mat-form-field appearance="outline" class="ad-form__field ad-form__field--half">
+      <mat-label>Title</mat-label>
+      <input matInput formControlName="title" />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="ad-form__field ad-form__field--half ad-form__field--inline-textarea">
+      <mat-label>Description</mat-label>
+      <textarea matInput formControlName="description" rows="2"></textarea>
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="ad-form__field ad-form__field--half">
+      <mat-label>Category</mat-label>
+      <mat-select formControlName="category">
+        <mat-option *ngFor="let c of data.categories" [value]="c">{{ c }}</mat-option>
+      </mat-select>
+    </mat-form-field>
+
+    <div class="ad-form__field ad-form__field--half">
+      <mat-slide-toggle formControlName="associateLocation">Associate current place</mat-slide-toggle>
+    </div>
+
+    <mat-form-field appearance="outline" class="ad-form__field ad-form__field--half">
+      <mat-label>Area label</mat-label>
+      <input #editAreaInput matInput formControlName="locationLabel" placeholder="Neighborhood or area" />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="ad-form__field ad-form__field--full">
+      <mat-label>Image URL</mat-label>
+      <input matInput formControlName="imageUrl" placeholder="https://..." />
+    </mat-form-field>
+
+    <div class="ad-form__coords" *ngIf="form.get('latitude')?.value as lat">
+      <span>Lat: {{ lat }}</span>
+      <span>Lng: {{ form.get('longitude')?.value }}</span>
+    </div>
+
+    <div class="ad-form__actions">
+      <button mat-flat-button color="primary" type="submit" [disabled]="form.invalid">Save</button>
+      <button mat-stroked-button type="button" (click)="dialogRef.close()">Cancel</button>
+    </div>
+  </form>
+</section>
