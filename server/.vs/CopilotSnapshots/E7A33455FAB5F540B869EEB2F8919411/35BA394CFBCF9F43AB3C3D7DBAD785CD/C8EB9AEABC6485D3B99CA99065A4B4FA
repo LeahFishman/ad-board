@@ -1,0 +1,66 @@
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using WebApplication1.Data;
+using WebApplication1.Models;
+
+namespace WebApplication1.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+[Authorize] // require JWT for all ad operations; adjust as needed
+public class AdvertisementsController : ControllerBase
+{
+    private readonly IAdvertisementRepository _repo;
+
+    public AdvertisementsController(IAdvertisementRepository repo)
+    {
+        _repo = repo;
+    }
+
+    [HttpGet]
+    [AllowAnonymous] // allow public read if desired
+    public async Task<ActionResult<List<Advertisement>>> GetAll(CancellationToken ct)
+    {
+        var ads = await _repo.GetAllAsync(ct);
+        return Ok(ads);
+    }
+
+    [HttpGet("{id:guid}")]
+    [AllowAnonymous]
+    public async Task<ActionResult<Advertisement>> GetById(Guid id, CancellationToken ct)
+    {
+        var ad = await _repo.GetByIdAsync(id, ct);
+        if (ad is null) return NotFound();
+        return Ok(ad);
+    }
+
+    [HttpPost]
+    [Authorize(Roles = "Admin,Editor")] // only Admin/Editor can create
+    public async Task<ActionResult<Advertisement>> Create([FromBody] Advertisement ad, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(ad.Title)) return ValidationProblem("Title is required");
+        // set creator from authenticated principal
+        ad.CreatedBy = User.Identity?.Name;
+        var created = await _repo.CreateAsync(ad, ct);
+        return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
+    }
+
+    [HttpPut("{id:guid}")]
+    [Authorize(Roles = "Admin,Editor")] // only Admin/Editor can edit
+    public async Task<ActionResult> Update(Guid id, [FromBody] Advertisement ad, CancellationToken ct)
+    {
+        if (id != ad.Id) return BadRequest("Id mismatch");
+        var ok = await _repo.UpdateAsync(ad, ct);
+        if (!ok) return NotFound();
+        return NoContent();
+    }
+
+    [HttpDelete("{id:guid}")]
+    [Authorize(Roles = "Admin")] // only Admin can delete
+    public async Task<ActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        var ok = await _repo.DeleteAsync(id, ct);
+        if (!ok) return NotFound();
+        return NoContent();
+    }
+}

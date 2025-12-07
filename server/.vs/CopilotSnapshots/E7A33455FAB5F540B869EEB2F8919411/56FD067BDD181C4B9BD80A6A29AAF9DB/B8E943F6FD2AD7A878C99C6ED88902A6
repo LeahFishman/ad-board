@@ -1,0 +1,30 @@
+﻿using Microsoft.Extensions.Options;
+
+namespace WebApplication1.Auth;
+
+public interface IAuthService
+{
+    AuthUser? ValidateUser(string userName, string password);
+}
+
+public class AuthService : IAuthService
+{
+    private readonly List<AuthUser> _users;
+
+    // Bind directly to the list of users from configuration
+    public AuthService(IOptions<List<AuthUser>> usersOptions)
+    {
+        _users = usersOptions.Value ?? new List<AuthUser>();
+    }
+
+    public AuthUser? ValidateUser(string userName, string password)
+    {
+        if (string.IsNullOrWhiteSpace(userName) || string.IsNullOrWhiteSpace(password))
+            return null;
+
+        var user = _users.FirstOrDefault(u => string.Equals(u.UserName, userName, StringComparison.OrdinalIgnoreCase));
+        if (user is null) return null;
+        if (!string.Equals(user.Password, password)) return null; // plain-text compare for local-only dev
+        return user;
+    }
+}

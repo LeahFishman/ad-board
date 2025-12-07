@@ -1,0 +1,28 @@
+<section class="signup">
+  <h1 class="signup__title">Create account</h1>
+  <form class="signup__form" (ngSubmit)="submit()">
+    <label class="signup__field">
+      <span>Username</span>
+      <input type="text" [(ngModel)]="userName" name="userName" required />
+    </label>
+    <label class="signup__field">
+      <span>Password</span>
+      <input type="password" [(ngModel)]="password" name="password" required />
+    </label>
+    <label class="signup__field">
+      <span>Confirm Password</span>
+      <input type="password" [(ngModel)]="confirmPassword" name="confirmPassword" required />
+    </label>
+    <div class="signup__actions">
+      <button class="signup__submit" type="submit" [disabled]="loading()">{{ loading() ? 'Signing up…' : 'Sign up' }}</button>
+    </div>
+    <div class="signup__alt">
+      <span>Already have an account?</span>
+      <a class="btn btn--link" routerLink="/login">Sign in</a>
+      <span class="divider">·</span>
+      <a class="btn" routerLink="/">Return to board</a>
+    </div>
+    <p class="signup__error" *ngIf="error()">{{ error() }}</p>
+    <p class="signup__success" *ngIf="success()">{{ success() }}</p>
+  </form>
+</section>

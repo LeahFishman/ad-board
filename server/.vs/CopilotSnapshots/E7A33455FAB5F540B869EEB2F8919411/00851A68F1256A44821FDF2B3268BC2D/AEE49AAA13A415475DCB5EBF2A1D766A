@@ -1,0 +1,122 @@
+﻿using System.Text.Json;
+using WebApplication1.Models;
+
+namespace WebApplication1.Data;
+
+public interface IAdvertisementRepository
+{
+    Task<List<Advertisement>> GetAllAsync(CancellationToken ct = default);
+    Task<Advertisement?> GetByIdAsync(Guid id, CancellationToken ct = default);
+    Task<Advertisement> CreateAsync(Advertisement ad, CancellationToken ct = default);
+    Task<bool> UpdateAsync(Advertisement ad, CancellationToken ct = default);
+    Task<bool> DeleteAsync(Guid id, CancellationToken ct = default);
+    // Streaming page read without loading entire file
+    Task<List<Advertisement>> GetPageAsync(int skip, int take, CancellationToken ct = default);
+}
+
+public class AdvertisementRepository : IAdvertisementRepository
+{
+    private readonly string _filePath;
+    private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true
+    };
+
+    public AdvertisementRepository(IWebHostEnvironment env)
+    {
+        var dataDir = Path.Combine(env.ContentRootPath, "App_Data");
+        Directory.CreateDirectory(dataDir);
+        _filePath = Path.Combine(dataDir, "advertisements.json");
+        if (!File.Exists(_filePath))
+        {
+            File.WriteAllText(_filePath, "[]");
+        }
+    }
+
+    private async Task<List<Advertisement>> ReadAllAsync()
+    {
+        await using var stream = File.Open(_filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        var ads = await JsonSerializer.DeserializeAsync<List<Advertisement>>(stream, _jsonOptions) ?? new List<Advertisement>();
+        return ads;
+    }
+
+    private async Task WriteAllAsync(List<Advertisement> ads, CancellationToken ct)
+    {
+        await using var stream = new FileStream(_filePath, FileMode.Create, FileAccess.Write, FileShare.None);
+        await JsonSerializer.SerializeAsync(stream, ads, _jsonOptions, ct);
+    }
+
+    public async Task<List<Advertisement>> GetAllAsync(CancellationToken ct = default) => await ReadAllAsync();
+
+    public async Task<Advertisement?> GetByIdAsync(Guid id, CancellationToken ct = default)
+    {
+        var ads = await ReadAllAsync();
+        return ads.FirstOrDefault(a => a.Id == id);
+    }
+
+    public async Task<Advertisement> CreateAsync(Advertisement ad, CancellationToken ct = default)
+    {
+        var ads = await ReadAllAsync();
+        ad.Id = ad.Id == Guid.Empty ? Guid.NewGuid() : ad.Id;
+        ad.CreatedAt = DateTimeOffset.UtcNow;
+        ads.Add(ad);
+        await WriteAllAsync(ads, ct);
+        return ad;
+    }
+
+    public async Task<bool> UpdateAsync(Advertisement ad, CancellationToken ct = default)
+    {
+        var ads = await ReadAllAsync();
+        var index = ads.FindIndex(a => a.Id == ad.Id);
+        if (index == -1) return false;
+        ad.UpdatedAt = DateTimeOffset.UtcNow;
+        ads[index] = ad;
+        await WriteAllAsync(ads, ct);
+        return true;
+    }
+
+    public async Task<bool> DeleteAsync(Guid id, CancellationToken ct = default)
+    {
+        var ads = await ReadAllAsync();
+        var removed = ads.RemoveAll(a => a.Id == id) > 0;
+        if (!removed) return false;
+        await WriteAllAsync(ads, ct);
+        return true;
+    }
+
+    public async Task<List<Advertisement>> GetPageAsync(int skip, int take, CancellationToken ct = default)
+    {
+        // Stream the JSON array and materialize only the requested slice
+        await using var stream = File.Open(_filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var reader = new StreamReader(stream);
+        var json = await reader.ReadToEndAsync();
+        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+        var utf8Reader = new Utf8JsonReader(bytes, new JsonReaderOptions { CommentHandling = JsonCommentHandling.Skip });
+
+        var results = new List<Advertisement>(Math.Min(take, 1024));
+        int index = 0;
+        if (!ReadToken(ref utf8Reader, JsonTokenType.StartArray)) return results;
+        while (utf8Reader.Read())
+        {
+            if (utf8Reader.TokenType == JsonTokenType.EndArray) break;
+            if (utf8Reader.TokenType == JsonTokenType.StartObject)
+            {
+                using var doc = JsonDocument.ParseValue(ref utf8Reader);
+                if (index++ < skip) continue;
+                var ad = doc.RootElement.Deserialize<Advertisement>(_jsonOptions);
+                if (ad != null)
+                {
+                    results.Add(ad);
+                    if (results.Count >= take) break;
+                }
+            }
+        }
+        return results;
+    }
+
+    private static bool ReadToken(ref Utf8JsonReader reader, JsonTokenType expected)
+    {
+        if (!reader.Read()) return false;
+        return reader.TokenType == expected;
+    }
+}

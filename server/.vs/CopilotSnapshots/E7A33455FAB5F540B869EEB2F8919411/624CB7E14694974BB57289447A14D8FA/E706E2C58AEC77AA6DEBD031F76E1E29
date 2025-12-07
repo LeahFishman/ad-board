@@ -1,0 +1,100 @@
+﻿using WebApplication1.Models;
+
+namespace WebApplication1.Services;
+
+public interface IAdsQueryService
+{
+    Task<PagedResult<AdDto>> QueryAsync(AdsQueryParameters q, CancellationToken ct = default);
+}
+
+public class AdsQueryService : IAdsQueryService
+{
+    private readonly IAdsService _adsService;
+
+    public AdsQueryService(IAdsService adsService)
+    {
+        _adsService = adsService;
+    }
+
+    public async Task<PagedResult<AdDto>> QueryAsync(AdsQueryParameters q, CancellationToken ct = default)
+    {
+        var page = q.Page < 1 ? 1 : q.Page;
+        var pageSize = q.PageSize < 1 ? 20 : (q.PageSize > 100 ? 100 : q.PageSize);
+
+        var query = (await _adsService.GetAllAsync(ct)).AsQueryable();
+
+        // Search on Title OR Description (case-insensitive)
+        if (!string.IsNullOrWhiteSpace(q.Search))
+        {
+            var term = q.Search.Trim().ToLower();
+            query = query.Where(ad =>
+                (ad.Title != null && ad.Title.ToLower().Contains(term)) ||
+                (ad.Description != null && ad.Description.ToLower().Contains(term))
+            );
+        }
+
+        // Existing filters
+        if (!string.IsNullOrWhiteSpace(q.Category))
+        {
+            query = query.Where(a => a.Category == q.Category);
+        }
+        if (!string.IsNullOrWhiteSpace(q.Location))
+        {
+            var loc = q.Location.Trim();
+            query = query.Where(a => a.Location != null && a.Location.StartsWith(loc, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // Geolocation bounding box
+        if (q.Lat.HasValue && q.Lng.HasValue && q.RadiusKm.HasValue)
+        {
+            var lat = q.Lat.Value;
+            var lng = q.Lng.Value;
+            var radius = q.RadiusKm.Value;
+            var earthRadiusKm = 6371d;
+
+            var latDelta = radius / earthRadiusKm * (180d / Math.PI);
+            var lngDelta = radius / (earthRadiusKm * Math.Cos(lat * Math.PI / 180d)) * (180d / Math.PI);
+
+            var minLat = lat - latDelta;
+            var maxLat = lat + latDelta;
+            var minLng = lng - lngDelta;
+            var maxLng = lng + lngDelta;
+
+            query = query.Where(ad =>
+                ad.Latitude.HasValue && ad.Longitude.HasValue &&
+                ad.Latitude.Value >= minLat && ad.Latitude.Value <= maxLat &&
+                ad.Longitude.Value >= minLng && ad.Longitude.Value <= maxLng);
+        }
+
+        // Sort by CreatedAt DESC
+        query = query.OrderByDescending(a => a.CreatedAt);
+
+        // Paging
+        var total = query.Count();
+        var skip = (page - 1) * pageSize;
+        var pageAds = query.Skip(skip).Take(pageSize).ToList();
+
+        var items = pageAds.Select(a => new AdDto
+        {
+            Id = a.Id,
+            Title = a.Title,
+            ShortDescription = (a.Description == null) ? string.Empty : (a.Description.Length > 200 ? a.Description.Substring(0, 200) + "..." : a.Description),
+            Category = a.Category,
+            Location = a.Location,
+            CreatedAt = a.CreatedAt,
+            ImageUrl = a.ImageUrl,
+            UserName = a.CreatedBy,
+            Latitude = a.Latitude,
+            Longitude = a.Longitude,
+            Address = a.Address
+        }).ToList();
+
+        return new PagedResult<AdDto>
+        {
+            Items = items,
+            TotalCount = total,
+            Page = page,
+            PageSize = pageSize
+        };
+    }
+}

@@ -1,0 +1,118 @@
+.ad-form__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px 24px; /* larger vertical and horizontal gap between fields */
+  align-items: start; /* keep fields aligned at the top */
+}
+.ad-form__field--half { grid-column: span 1; }
+.ad-form__field--full { grid-column: 1 / -1; }
+.ad-form__field { margin-bottom: 8px; }
+.ad-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+.ad-form__field--inline-textarea textarea {
+  /* Match Material input height (~56px) for outline appearance */
+  min-height: 56px;
+  line-height: 56px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.ad-card__edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+:root {
+  --bg: #f7f7f8;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --shadow: 0 1px 2px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.04);
+  --orange: #f97316;
+  --ribbon: #9dd6ff;
+}
+
+.ads-board { padding: 1rem; background: var(--bg); }
+
+.board-header {
+  position: relative;
+  background: #fafafa;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1.25rem 1.5rem;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.board-header__bg { position: absolute; inset: 0; background-image: url('https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}.png'); opacity: 0.06; filter: grayscale(100%); pointer-events: none; }
+.board-header__content { position: relative; display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.board-header__auth { display: flex; align-items: center; gap: 0.5rem; }
+.auth .btn { text-decoration: none; display: inline-flex; align-items: center; gap: 0.25rem; }
+.user-badge { background: #eef2ff; color: #1e40af; padding: 0.35rem 0.6rem; border-radius: 0.5rem; }
+.board-actions { display: flex; justify-content: flex-end; margin-top: 0.75rem; }
+.board-header__title { font-size: clamp(1.5rem, 2.4vw, 2.25rem); margin: 0; }
+.board-header__title-bold { font-weight: 700; }
+.board-header__subtitle { max-width: 48ch; color: var(--muted); margin: 0; font-size: 0.9rem; }
+
+.search-bar {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  box-shadow: var(--shadow);
+}
+.search-bar__icon { font-size: 1.1rem; }
+.search-bar__input { border: 0; outline: none; padding: 0.5rem; font-size: 0.95rem; }
+.search-bar__button { padding: 0.5rem 0.9rem; border-radius: 0.5rem; border: 0; background: #f97316; color: #fff; font-weight: 600; cursor: pointer; }
+
+/* Add form uses MatDialog + Material form fields now; keep minimal container spacing */
+.ad-form { padding: 20px; min-height: 60vh; display: flex; flex-direction: column; }
+.ad-form__actions { display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: auto; }
+
+.ads-grid {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+@media (max-width: 1280px) { .ads-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 1024px) { .ads-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .ads-grid { grid-template-columns: 1fr; } }
+
+.ad-card {
+  display: grid;
+  grid-template-rows: auto auto auto 1fr auto;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: #fff;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.ad-card__top { display: flex; justify-content: flex-start; align-items: center; padding: 0.5rem 0.75rem; gap: 0.75rem; }
+.ad-card__category { background: var(--ribbon); padding: 0.25rem 0.5rem; border-radius: 0.4rem; font-size: 0.75rem; font-weight: 600; }
+.ad-card__area { font-size: 0.75rem; color: var(--muted); }
+.ad-card__image-wrap { display: grid; place-items: center; height: 180px; background: #fafafa; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.ad-card__image { max-width: 100%; max-height: 100%; object-fit: cover; }
+.ad-card__content { padding: 0.5rem 0.75rem; }
+.ad-card__title { font-size: 1rem; margin: 0 0 0.25rem; }
+.ad-card__desc { margin: 0; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.ad-card__user { display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem; border-top: 1px solid var(--border); }
+.ad-card__avatar { width: 28px; height: 28px; border-radius: 9999px; }
+.ad-card__meta { display: grid; font-size: 0.8rem; }
+.ad-card__username { font-weight: 600; }
+.ad-card__time { color: var(--muted); }
+.ad-card__comment-button { margin-left: auto; padding: 0.35rem 0.6rem; font-size: 0.8rem; border-radius: 0.5rem; border: 1px solid var(--border); background: #fff; cursor: pointer; }
+.empty-state { display: grid; justify-items: center; gap: 0.5rem; padding: 1.5rem; color: var(--muted); }
+.ad-card__edit { display: grid; gap: 0.5rem; padding: 0.5rem 0.75rem; }
+.ad-card__edit-input, .ad-card__edit-textarea { border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.5rem; font-size: 0.95rem; }
+.ad-card__edit-actions { display: flex; gap: 0.5rem; }

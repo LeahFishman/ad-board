@@ -1,0 +1,153 @@
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using WebApplication1.Models;
+using WebApplication1.Services;
+using System.Security.Claims;
+
+namespace WebApplication1.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+[Authorize] // require JWT for all ad operations; adjust as needed
+public class AdvertisementsController : ControllerBase
+{
+    private readonly IAdsService _adsService;
+    private readonly IAdsQueryService _queryService;
+
+    public AdvertisementsController(IAdsService adsService, IAdsQueryService queryService)
+    {
+        _adsService = adsService;
+        _queryService = queryService;
+    }
+
+    // Unified listing endpoint with paging, search, filtering
+    [HttpGet]
+    [AllowAnonymous] // allow public read if desired
+    public async Task<ActionResult<PagedResult<AdDto>>> Get([FromQuery] AdsQueryParameters query, CancellationToken ct)
+    {
+        if (query.Page < 1) query.Page = 1;
+        if (query.PageSize < 1) query.PageSize = 20;
+        if (query.PageSize > 100) query.PageSize = 100;
+        var result = await _queryService.QueryAsync(query, ct);
+        return Ok(result);
+    }
+
+    [HttpGet("{id:guid}")]
+    [AllowAnonymous]
+    public async Task<ActionResult<Advertisement>> GetById(Guid id, CancellationToken ct)
+    {
+        var ad = await _adsService.GetByIdAsync(id, ct);
+        if (ad is null) return NotFound();
+        return Ok(ad);
+    }
+
+    [HttpPost]
+    [Authorize(Roles = "Admin,Editor")] // only Admin/Editor can create
+    public async Task<ActionResult<Advertisement>> Create([FromBody] Advertisement ad, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(ad.Title)) return ValidationProblem("Title is required");
+        var created = await _adsService.CreateAsync(ad, User.Identity?.Name, ct);
+        return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
+    }
+
+    [HttpPut("{id:guid}")]
+    [Authorize(Roles = "Admin,Editor")] // Admin can edit any; Editor only own
+    public async Task<ActionResult> Update(Guid id, [FromBody] Advertisement ad, CancellationToken ct)
+    {
+        // Do not trust body Id. Use route id.
+        var currentUser = User.Identity?.Name ?? string.Empty;
+        var role = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value;
+        var existing = await _adsService.GetByIdAsync(id, ct);
+        if (existing is null) return NotFound();
+
+        if (string.Equals(role, "Editor", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(existing.CreatedBy, currentUser, StringComparison.OrdinalIgnoreCase))
+        {
+            return Forbid();
+        }
+
+        // Preserve immutable fields and apply route id
+        ad.Id = existing.Id;
+        ad.CreatedBy = existing.CreatedBy;
+        ad.CreatedAt = existing.CreatedAt;
+
+        var ok = await _adsService.UpdateAsync(ad, ct);
+        if (!ok) return NotFound();
+        return NoContent();
+    }
+
+    [HttpDelete("{id:guid}")]
+    [Authorize(Roles = "Admin,Editor")] // Admin can delete any; Editor only own
+    public async Task<ActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        var currentUser = User.Identity?.Name ?? string.Empty;
+        var role = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value;
+        var existing = await _adsService.GetByIdAsync(id, ct);
+        if (existing is null) return NotFound();
+
+        if (string.Equals(role, "Editor", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(existing.CreatedBy, currentUser, StringComparison.OrdinalIgnoreCase))
+        {
+            return Forbid();
+        }
+
+        var ok = await _adsService.DeleteAsync(id, ct);
+        if (!ok) return NotFound();
+        return NoContent();
+    }
+
+    // Demo data seeding: generate 5000 ads with real image URLs; Admin only
+    [HttpPost("seed-demo")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> SeedDemo(CancellationToken ct)
+    {
+        var users = new[] { "admin", "editor", "viewer" };
+        var categories = new[] { "Electronics", "Furniture", "Sports", "Music", "Photography" };
+        var locations = new[] { "New York, NY", "San Francisco, CA", "Seattle, WA", "Austin, TX", "Denver, CO", "Chicago, IL", "Portland, OR", "Los Angeles, CA", "Boston, MA", "Miami, FL" };
+        var coords = new (double lat, double lng)[] { (40.7128,-74.0060), (37.7749,-122.4194), (47.6062,-122.3321), (30.2672,-97.7431), (39.7392,-104.9903), (41.8781,-87.6298), (45.5152,-122.6784), (34.0522,-118.2437), (42.3601,-71.0589), (25.7617,-80.1918) };
+        var images = new[] {
+            "https://images.unsplash.com/photo-1517336714731-489689fd1ca8",
+            "https://images.unsplash.com/photo-1519710164239-da123dc03ef4",
+            "https://images.unsplash.com/photo-1519183071298-a2962be96a49",
+            "https://images.unsplash.com/photo-1511379938547-c1f69419868d",
+            "https://images.unsplash.com/photo-1520975922237-897a0f19aa2c",
+            "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9"
+        };
+
+        var rnd = new Random(1234);
+        var now = DateTimeOffset.UtcNow;
+
+        for (int i = 0; i < 5000; i++)
+        {
+            var u = users[i % users.Length];
+            var cat = categories[i % categories.Length];
+            var locIdx = i % locations.Length;
+            var loc = locations[locIdx];
+            var (lat, lng) = coords[locIdx];
+            var img = images[i % images.Length];
+
+            var ad = new Advertisement
+            {
+                // Ensure unique Ids
+                Id = Guid.NewGuid(),
+                Title = $"Demo Item #{i + 1}",
+                Description = $"Demo description for item #{i + 1}. Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
+                Price = Math.Round(rnd.NextDouble() * 1000, 2),
+                CreatedAt = now.AddMinutes(-i),
+                CreatedBy = u,
+                Category = cat,
+                Location = loc,
+                ImageUrl = img,
+                Latitude = lat,
+                Longitude = lng,
+                Address = loc,
+                City = loc.Split(',')[0],
+                Country = "USA"
+            };
+
+            await _adsService.CreateAsync(ad, ad.CreatedBy, ct);
+        }
+
+        return Ok(new { message = "Seeded 5000 demo ads" });
+    }
+}

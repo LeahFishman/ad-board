@@ -1,0 +1,10 @@
+/* Temporary: use a prebuilt Angular Material theme for quick setup */
+@import '@angular/material/prebuilt-themes/indigo-pink.css';
+
+/* You can later switch to M3 theming API:
+@use '@angular/material' as mat;
+@use '@angular/material' with (
+	$theme: mat.define-theme(mat.$m3-indigo-pink)
+);
+*/
+/* You can add global styles to this file, and also import other style files */

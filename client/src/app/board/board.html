@@ -1,0 +1,133 @@
+<section class="ads-board">
+  <header class="board-header">
+    <div class="board-header__bg" aria-hidden="true"></div>
+    <div class="board-header__content">
+      <h1 class="board-header__title">
+        What's good <span class="board-header__title-bold">IN THE HOOD!</span>
+      </h1>
+      <p class="board-header__subtitle">
+        READ & SHARE POSTS IN YOUR OWN NEIGHBORHOOD ON A PINBOARD BASED ON YOUR LOCATION
+      </p>
+      <div class="board-header__auth">
+          <div class="auth">
+            <ng-container *ngIf="!token(); else loggedIn">
+              <a routerLink="/login" class="btn btn--primary">Sign in</a>
+              <a routerLink="/signup" class="btn btn--primary">Create account</a>
+            </ng-container>
+            <ng-template #loggedIn>
+              <span class="user-badge">Signed in as {{ loggedInUser() }}</span>
+              <button class="btn" type="button" (click)="logout()">Log out</button>
+            </ng-template>
+          </div>
+      </div>
+    </div>
+  </header>
+  
+  <section class="search-bar" aria-label="Search">
+    <mat-icon aria-hidden="true">place</mat-icon>
+    <mat-form-field appearance="outline" class="search-bar__mat-field">
+      <mat-label>Search ads</mat-label>
+      <input matInput placeholder="Search ads" (input)="onSearchChange($any($event.target).value)" />
+    </mat-form-field>
+  </section>
+
+  <section class="paginator paginator--top">
+    <button mat-stroked-button type="button" (click)="prevPage()" [disabled]="page() === 1">« Previous</button>
+    <span class="paginator__info">Page {{ page() }} of {{ (totalPages$ | async) }}</span>
+    <button mat-stroked-button type="button" (click)="nextPage()" [disabled]="page() >= ((totalPages$ | async) || 1)">Next »</button>
+  </section>
+
+  <div class="board-actions">
+    <ng-container *ngIf="token(); else needLogin">
+      <button mat-flat-button color="primary" type="button" (click)="openAddDialog()" *ngIf="canAdd()">Add new post</button>
+    </ng-container>
+    <ng-template #needLogin>
+      <p>Please sign in to add posts.</p>
+    </ng-template>
+  </div>
+
+  <div class="category-filter">
+    <!-- Category filter removed -->
+  </div>
+  <!-- Add dialog moved to standalone component -->
+
+  @if (loading()) {
+    <div style="display:grid;place-items:center;padding:1rem">
+      <mat-progress-spinner mode="indeterminate"></mat-progress-spinner>
+    </div>
+  } @else {
+  <section class="ads-grid" aria-label="Neighborhood posts">
+    <ng-container *ngFor="let ad of (ads$ | async); trackBy: trackById">
+      <mat-card class="ad-card">
+        <div class="ad-card__top">
+          <span class="ad-card__category">{{ ad.category }}</span>
+          <span class="ad-card__area">{{ ad.location }}</span>
+        </div>
+        <div class="ad-card__image-wrap">
+          <img class="ad-card__image" [src]="ad.imageUrl" alt="Ad image" />
+        </div>
+        <div class="ad-card__content" *ngIf="editingId() !== ad.id; else editTemplate">
+          <h2 class="ad-card__title">{{ ad.title }}</h2>
+          <p class="ad-card__desc">{{ ad.shortDescription }}</p>
+          <div class="ad-card__details">
+            <span *ngIf="ad.category">Category: {{ ad.category }}</span>
+            <span *ngIf="ad.location">Location: {{ ad.location }}</span>
+            <span *ngIf="ad.address">Address: {{ ad.address }}</span>
+            <span *ngIf="ad.latitude !== null && ad.longitude !== null">Coords: {{ ad.latitude }}, {{ ad.longitude }}</span>
+          </div>
+        </div>
+        <ng-template #editTemplate>
+          <form class="ad-card__edit" [formGroup]="editForm" (ngSubmit)="saveEdit(ad.id)">
+            <mat-form-field appearance="outline">
+              <mat-label>Title</mat-label>
+              <input matInput formControlName="title" class="ad-card__edit-input" />
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="ad-card__edit-textarea">
+              <mat-label>Description</mat-label>
+              <textarea matInput formControlName="description" rows="3"></textarea>
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Image URL</mat-label>
+              <input matInput formControlName="imageUrl" class="ad-card__edit-input" />
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Category</mat-label>
+              <mat-select formControlName="category" class="ad-card__edit-input">
+                <mat-option *ngFor="let c of categories" [value]="c">{{ c }}</mat-option>
+              </mat-select>
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Location</mat-label>
+              <input matInput formControlName="locationLabel" class="ad-card__edit-input" placeholder="Location" />
+            </mat-form-field>
+            <div class="ad-card__edit-actions">
+              <button type="submit" mat-flat-button color="primary" [disabled]="editForm.invalid">Save</button>
+              <button type="button" mat-stroked-button (click)="cancelEdit()">Cancel</button>
+            </div>
+          </form>
+        </ng-template>
+        <div class="ad-card__user">
+          <img class="ad-card__avatar" [src]="ad.imageUrl" alt="{{ ad.userName }} avatar" />
+          <div class="ad-card__meta">
+            <span class="ad-card__username">{{ ad.userName }}</span>
+            <span class="ad-card__time">{{ ad.createdAt | date:'short' }}</span>
+          </div>
+          <ng-container *ngIf="canModify(ad)">
+            <button mat-button type="button" (click)="startEdit(ad.id)" *ngIf="editingId() !== ad.id">Edit</button>
+            <button mat-flat-button color="warn" type="button" (click)="deleteAd(ad.id)">Delete</button>
+          </ng-container>
+        </div>
+      </mat-card>
+    </ng-container>
+    <ng-container *ngIf="(ads$ | async) as ads">
+      <div class="empty-state" *ngIf="ads.length === 0">
+        <mat-icon>inbox</mat-icon>
+        <p>No posts found. Try adjusting filters or adding a new post.</p>
+        <button mat-stroked-button color="primary" (click)="openAddDialog()" *ngIf="canAdd()">Add new post</button>
+      </div>
+    </ng-container>
+  </section>
+  }
+
+  
+</section>

@@ -1,0 +1,78 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+using WebApplication1.Auth;
+
+namespace WebApplication1.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+public class AuthController : ControllerBase
+{
+    private readonly IAuthService _authService;
+    private readonly IJwtTokenService _tokenService;
+    private readonly JwtSettings _jwtSettings;
+    private readonly IAuthUserStore _userStore;
+
+    public AuthController(IAuthService authService, IJwtTokenService tokenService, IOptions<JwtSettings> jwtOptions, IAuthUserStore userStore)
+    {
+        _authService = authService;
+        _tokenService = tokenService;
+        _jwtSettings = jwtOptions.Value;
+        _userStore = userStore;
+    }
+
+    public record LoginRequest(string UserName, string Password);
+    public record LoginResponse(string Token, string UserName, string Role, DateTime ExpiresAt);
+    public record MeResponse(string UserName, string Role);
+    // Remove role from signup; all new users get role 'Editor'
+    public record SignupRequest(string UserName, string Password);
+
+    [HttpPost("login")]
+    [AllowAnonymous]
+    public ActionResult<LoginResponse> Login([FromBody] LoginRequest request)
+    {
+        var user = _authService.ValidateUser(request.UserName, request.Password);
+        if (user is null)
+            return Unauthorized(new { message = "Invalid username or password" });
+
+        var token = _tokenService.GenerateToken(user.UserName, user.Role);
+        var expires = DateTime.UtcNow.AddMinutes(_jwtSettings.TokenLifetimeMinutes);
+
+        return Ok(new LoginResponse(token, user.UserName, user.Role, expires));
+    }
+
+    [Authorize]
+    [HttpGet("me")]
+    public ActionResult<MeResponse> Me()
+    {
+        var userName = User.Identity?.Name ?? string.Empty;
+        var role = User.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.Role)?.Value ?? string.Empty;
+        return Ok(new MeResponse(userName, role));
+    }
+
+    // Simple local-only signup persists to App_Data/authusers.json
+    [HttpPost("signup")]
+    [AllowAnonymous]
+    public async Task<IActionResult> Signup([FromBody] SignupRequest request, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.UserName) || string.IsNullOrWhiteSpace(request.Password))
+        {
+            return BadRequest(new { message = "UserName and Password are required" });
+        }
+
+        var added = await _userStore.AddUserAsync(new AuthUser
+        {
+            UserName = request.UserName,
+            Password = request.Password,
+            Role = "Editor" // default role for new users
+        }, ct);
+
+        if (!added)
+        {
+            return Conflict(new { message = "Username already exists" });
+        }
+
+        return Created(string.Empty, new { message = "User created", role = "Editor" });
+    }
+}

@@ -1,0 +1,21 @@
+<section class="login login--centered">
+  <h1 class="login__title">Sign in</h1>
+  <form class="login__form" (ngSubmit)="submit()">
+    <label class="login__field">
+      <span>Username</span>
+      <input type="text" [(ngModel)]="userName" name="userName" required />
+    </label>
+    <label class="login__field">
+      <span>Password</span>
+      <input type="password" [(ngModel)]="password" name="password" required />
+    </label>
+    <div class="login__actions">
+      <a class="btn btn--link" routerLink="/signup">Create an account</a>
+      <button class="login__submit" type="submit" [disabled]="loading()">{{ loading() ? 'Signing in…' : 'Sign in' }}</button>
+    </div>
+    <div class="login__alt">
+      <a class="btn" routerLink="/">Return to board</a>
+    </div>
+    <p class="login__error" *ngIf="error()">{{ error() }}</p>
+  </form>
+</section>

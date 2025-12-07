@@ -1,0 +1,76 @@
+﻿using WebApplication1.Data;
+using WebApplication1.Models;
+
+namespace WebApplication1.Services;
+
+public interface IAdsQueryService
+{
+    Task<PagedResult<AdDto>> QueryAsync(AdsQueryParameters q, CancellationToken ct = default);
+}
+
+public class AdsQueryService : IAdsQueryService
+{
+    private readonly IAdvertisementRepository _repo;
+
+    public AdsQueryService(IAdvertisementRepository repo)
+    {
+        _repo = repo;
+    }
+
+    public async Task<PagedResult<AdDto>> QueryAsync(AdsQueryParameters q, CancellationToken ct = default)
+    {
+        // Validate paging
+        var page = q.Page < 1 ? 1 : q.Page;
+        var pageSize = q.PageSize < 1 ? 20 : (q.PageSize > 100 ? 100 : q.PageSize);
+
+        // Load source. In a DB-backed app, this would be an IQueryable from DbContext.
+        var source = (await _repo.GetAllAsync(ct)).AsQueryable();
+
+        // Filters and search
+        if (!string.IsNullOrWhiteSpace(q.Search))
+        {
+            var search = q.Search.Trim();
+            source = source.Where(a =>
+                (a.Title != null && a.Title.Contains(search, StringComparison.OrdinalIgnoreCase)) ||
+                (a.Description != null && a.Description.Contains(search, StringComparison.OrdinalIgnoreCase))
+            );
+        }
+        if (!string.IsNullOrWhiteSpace(q.Category))
+        {
+            source = source.Where(a => a.Category == q.Category);
+        }
+        if (!string.IsNullOrWhiteSpace(q.Location))
+        {
+            var loc = q.Location.Trim();
+            source = source.Where(a => a.Location != null && a.Location.StartsWith(loc, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // Sort by CreatedAt DESC
+        source = source.OrderByDescending(a => a.CreatedAt);
+
+        var total = source.Count();
+        var skip = (page - 1) * pageSize;
+        var items = source.Skip(skip).Take(pageSize)
+            .Select(a => new AdDto
+            {
+                Id = a.Id,
+                Title = a.Title,
+                // Avoid null-conditional and range in projection to support expression trees
+                ShortDescription = (a.Description == null) ? string.Empty : (a.Description.Length > 200 ? a.Description.Substring(0, 200) + "..." : a.Description),
+                Category = a.Category,
+                Location = a.Location,
+                CreatedAt = a.CreatedAt,
+                ImageUrl = a.ImageUrl,
+                UserName = a.CreatedBy
+            })
+            .ToList();
+
+        return new PagedResult<AdDto>
+        {
+            Items = items,
+            TotalCount = total,
+            Page = page,
+            PageSize = pageSize
+        };
+    }
+}

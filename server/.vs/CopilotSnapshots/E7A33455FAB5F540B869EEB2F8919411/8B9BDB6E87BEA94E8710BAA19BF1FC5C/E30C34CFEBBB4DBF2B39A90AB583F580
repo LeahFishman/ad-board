@@ -1,0 +1,198 @@
+﻿using System.Buffers;
+using System.Text.Json;
+using WebApplication1.Models;
+
+namespace WebApplication1.Data;
+
+public interface IAdvertisementRepository
+{
+    Task<List<Advertisement>> GetAllAsync(CancellationToken ct = default);
+    Task<Advertisement?> GetByIdAsync(Guid id, CancellationToken ct = default);
+    Task<Advertisement> CreateAsync(Advertisement ad, CancellationToken ct = default);
+    Task<bool> UpdateAsync(Advertisement ad, CancellationToken ct = default);
+    Task<bool> DeleteAsync(Guid id, CancellationToken ct = default);
+    Task<List<Advertisement>> GetPageAsync(int skip, int take, CancellationToken ct = default);
+    Task<PagedResult<Advertisement>> QueryFromFileAsync(AdsQueryParameters q, CancellationToken ct = default);
+}
+
+public class AdvertisementRepository : IAdvertisementRepository
+{
+    private readonly string _filePath;
+    private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true
+    };
+
+    public AdvertisementRepository(IWebHostEnvironment env)
+    {
+        var dataDir = Path.Combine(env.ContentRootPath, "App_Data");
+        Directory.CreateDirectory(dataDir);
+        _filePath = Path.Combine(dataDir, "advertisements.json");
+        if (!File.Exists(_filePath))
+        {
+            File.WriteAllText(_filePath, "[]");
+        }
+    }
+
+    private async Task<List<Advertisement>> ReadAllAsync()
+    {
+        await using var stream = File.Open(_filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        var ads = await JsonSerializer.DeserializeAsync<List<Advertisement>>(stream, _jsonOptions) ?? new List<Advertisement>();
+        return ads;
+    }
+
+    private async Task WriteAllAsync(List<Advertisement> ads, CancellationToken ct)
+    {
+        await using var stream = new FileStream(_filePath, FileMode.Create, FileAccess.Write, FileShare.None);
+        await JsonSerializer.SerializeAsync(stream, ads, _jsonOptions, ct);
+    }
+
+    public async Task<List<Advertisement>> GetAllAsync(CancellationToken ct = default) => await ReadAllAsync();
+
+    public async Task<Advertisement?> GetByIdAsync(Guid id, CancellationToken ct = default)
+    {
+        var ads = await ReadAllAsync();
+        return ads.FirstOrDefault(a => a.Id == id);
+    }
+
+    public async Task<Advertisement> CreateAsync(Advertisement ad, CancellationToken ct = default)
+    {
+        var ads = await ReadAllAsync();
+        ad.Id = ad.Id == Guid.Empty ? Guid.NewGuid() : ad.Id;
+        ad.CreatedAt = DateTimeOffset.UtcNow;
+        ads.Add(ad);
+        await WriteAllAsync(ads, ct);
+        return ad;
+    }
+
+    public async Task<bool> UpdateAsync(Advertisement ad, CancellationToken ct = default)
+    {
+        var ads = await ReadAllAsync();
+        var index = ads.FindIndex(a => a.Id == ad.Id);
+        if (index == -1) return false;
+        ad.UpdatedAt = DateTimeOffset.UtcNow;
+        ads[index] = ad;
+        await WriteAllAsync(ads, ct);
+        return true;
+    }
+
+    public async Task<bool> DeleteAsync(Guid id, CancellationToken ct = default)
+    {
+        var ads = await ReadAllAsync();
+        var removed = ads.RemoveAll(a => a.Id == id) > 0;
+        if (!removed) return false;
+        await WriteAllAsync(ads, ct);
+        return true;
+    }
+
+    public async Task<List<Advertisement>> GetPageAsync(int skip, int take, CancellationToken ct = default)
+    {
+        var results = new List<Advertisement>(Math.Min(take, 1024));
+        await using var stream = new FileStream(_filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, bufferSize: 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        var opts = new JsonSerializerOptions(_jsonOptions);
+        try
+        {
+            int index = 0;
+            await foreach (var ad in JsonSerializer.DeserializeAsyncEnumerable<Advertisement>(stream, opts, ct))
+            {
+                if (ad is null) continue;
+                if (index++ < skip) continue;
+                results.Add(ad);
+                if (results.Count >= take) break;
+            }
+        }
+        catch (JsonException)
+        {
+            return results;
+        }
+        return results;
+    }
+
+    public async Task<PagedResult<Advertisement>> QueryFromFileAsync(AdsQueryParameters q, CancellationToken ct = default)
+    {
+        var page = q.Page < 1 ? 1 : q.Page;
+        var pageSize = q.PageSize < 1 ? 20 : (q.PageSize > 100 ? 100 : q.PageSize);
+        var skip = (page - 1) * pageSize;
+
+        var pageItems = new List<Advertisement>(pageSize);
+        int totalMatches = 0;
+
+        await using var stream = new FileStream(_filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, bufferSize: 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        var opts = new JsonSerializerOptions(_jsonOptions);
+
+        double? minLat = null, maxLat = null, minLng = null, maxLng = null;
+        if (q.Lat.HasValue && q.Lng.HasValue && q.RadiusKm.HasValue)
+        {
+            var lat = q.Lat.Value;
+            var lng = q.Lng.Value;
+            var radius = q.RadiusKm.Value;
+            var earthRadiusKm = 6371d;
+            var latDelta = radius / earthRadiusKm * (180d / Math.PI);
+            var lngDelta = radius / (earthRadiusKm * Math.Cos(lat * Math.PI / 180d)) * (180d / Math.PI);
+            minLat = lat - latDelta;
+            maxLat = lat + latDelta;
+            minLng = lng - lngDelta;
+            maxLng = lng + lngDelta;
+        }
+
+        var term = string.IsNullOrWhiteSpace(q.Search) ? null : q.Search!.Trim().ToLower();
+        var locPrefix = string.IsNullOrWhiteSpace(q.Location) ? null : q.Location!.Trim();
+        var category = q.Category;
+
+        try
+        {
+            int index = 0;
+            await foreach (var ad in JsonSerializer.DeserializeAsyncEnumerable<Advertisement>(stream, opts, ct))
+            {
+                if (ad is null) continue;
+
+                // Free-text search over Title, Description, Location, Category
+                if (term != null)
+                {
+                    var titleMatch = ad.Title != null && ad.Title.ToLower().Contains(term);
+                    var descMatch = ad.Description != null && ad.Description.ToLower().Contains(term);
+                    var locMatch = ad.Location != null && ad.Location.ToLower().StartsWith(term);
+                    var catMatch = ad.Category != null && ad.Category.ToLower().StartsWith(term);
+                    if (!titleMatch && !descMatch && !locMatch && !catMatch) continue;
+                }
+                // Exact category filter (kept)
+                if (!string.IsNullOrWhiteSpace(category))
+                {
+                    if (ad.Category != category) continue;
+                }
+                // Location prefix filter (kept)
+                if (locPrefix != null)
+                {
+                    if (ad.Location == null || !ad.Location.StartsWith(locPrefix, StringComparison.OrdinalIgnoreCase)) continue;
+                }
+                // Bounding box filter (kept)
+                if (minLat.HasValue)
+                {
+                    if (!ad.Latitude.HasValue || !ad.Longitude.HasValue) continue;
+                    var latVal = ad.Latitude.Value;
+                    var lngVal = ad.Longitude.Value;
+                    if (latVal < minLat.Value || latVal > maxLat!.Value || lngVal < minLng!.Value || lngVal > maxLng!.Value) continue;
+                }
+
+                totalMatches++;
+                var current = totalMatches - 1;
+                if (current >= skip && pageItems.Count < pageSize)
+                {
+                    pageItems.Add(ad);
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            // Return whatever has been collected if JSON invalid
+        }
+
+        return new PagedResult<Advertisement>
+        {
+            Items = pageItems,
+            TotalCount = totalMatches,
+            Page = page,
+            PageSize = pageSize
+        };
+    }
+}

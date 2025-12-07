@@ -1,0 +1,98 @@
+﻿using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using WebApplication1.Auth;
+using WebApplication1.Services;
+
+var builder = WebApplication.CreateBuilder(args);
+var configuration = builder.Configuration;
+
+// Add services to the container.
+builder.Services.AddControllers();
+// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+builder.Services.AddOpenApi();
+
+// Bind configuration sections
+builder.Services.Configure<List<AuthUser>>(configuration.GetSection("AuthUsers"));
+builder.Services.Configure<JwtSettings>(configuration.GetSection("JwtSettings"));
+
+// Register auth services
+builder.Services.AddScoped<IAuthUserStore, AuthUserStore>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+
+// Register ads services (application layer)
+builder.Services.AddScoped<IAdsService, AdsService>();
+builder.Services.AddScoped<IAdsQueryService, AdsQueryService>();
+
+// Register current data layer implementation (file-backed repository)
+builder.Services.AddSingleton<WebApplication1.Data.IAdvertisementRepository, WebApplication1.Data.AdvertisementRepository>();
+
+// Demo data seeder
+builder.Services.AddSingleton<DemoDataSeeder>();
+
+// JWT Authentication configuration
+var jwtSettings = configuration.GetSection("JwtSettings").Get<JwtSettings>() ?? new JwtSettings();
+var keyBytes = Encoding.UTF8.GetBytes(jwtSettings.SecretKey);
+var symKey = new SymmetricSecurityKey(keyBytes);
+
+builder.Services
+    .AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
+    .AddJwtBearer(options =>
+    {
+        options.RequireHttpsMetadata = false; // local dev only
+        options.SaveToken = true;
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = jwtSettings.Issuer,
+            ValidateAudience = true,
+            ValidAudience = jwtSettings.Audience,
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.Zero,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = symKey,
+        };
+    });
+
+// Authorization
+builder.Services.AddAuthorization();
+
+// CORS: named policy for Angular dev server
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("LocalDev", policy =>
+        policy.WithOrigins("http://localhost:4200", "https://localhost:4200")
+              .AllowAnyMethod()
+              .AllowAnyHeader());
+});
+
+var app = builder.Build();
+
+// Seed demo data at startup (no endpoint)
+using (var scope = app.Services.CreateScope())
+{
+    var seeder = scope.ServiceProvider.GetRequiredService<DemoDataSeeder>();
+    await seeder.EnsureDemoAdsAsync(10000);
+}
+
+// Configure the HTTP request pipeline.
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi();
+}
+
+app.UseHttpsRedirection();
+
+app.UseCors("LocalDev");
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapControllers();
+
+app.Run();

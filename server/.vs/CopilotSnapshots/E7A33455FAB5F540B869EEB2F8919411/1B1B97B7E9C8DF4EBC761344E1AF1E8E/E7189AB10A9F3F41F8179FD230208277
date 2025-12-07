@@ -1,0 +1,68 @@
+﻿using WebApplication1.Data;
+using WebApplication1.Models;
+
+namespace WebApplication1.Services;
+
+// Runs at startup to ensure demo data exists without exposing an endpoint
+public class DemoDataSeeder
+{
+    private readonly IAdvertisementRepository _repo;
+
+    public DemoDataSeeder(IAdvertisementRepository repo)
+    {
+        _repo = repo;
+    }
+
+    public async Task EnsureDemoAdsAsync(int count = 5000, CancellationToken ct = default)
+    {
+        var existing = await _repo.GetAllAsync(ct);
+        if (existing.Count >= count) return; // already seeded enough
+
+        var users = new[] { "admin", "editor", "viewer" };
+        var categories = new[] { "Electronics", "Furniture", "Sports", "Music", "Photography" };
+        var locations = new[] { "New York, NY", "San Francisco, CA", "Seattle, WA", "Austin, TX", "Denver, CO", "Chicago, IL", "Portland, OR", "Los Angeles, CA", "Boston, MA", "Miami, FL" };
+        var coords = new (double lat, double lng)[] { (40.7128,-74.0060), (37.7749,-122.4194), (47.6062,-122.3321), (30.2672,-97.7431), (39.7392,-104.9903), (41.8781,-87.6298), (45.5152,-122.6784), (34.0522,-118.2437), (42.3601,-71.0589), (25.7617,-80.1918) };
+        var images = new[] {
+            "https://images.unsplash.com/photo-1517336714731-489689fd1ca8",
+            "https://images.unsplash.com/photo-1519710164239-da123dc03ef4",
+            "https://images.unsplash.com/photo-1519183071298-a2962be96a49",
+            "https://images.unsplash.com/photo-1511379938547-c1f69419868d",
+            "https://images.unsplash.com/photo-1520975922237-897a0f19aa2c",
+            "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9"
+        };
+
+        var rnd = new Random(1234);
+        var now = DateTimeOffset.UtcNow;
+        int toAdd = count - existing.Count;
+        for (int i = 0; i < toAdd; i++)
+        {
+            var idx = existing.Count + i + 1;
+            var u = users[idx % users.Length];
+            var cat = categories[idx % categories.Length];
+            var locIdx = idx % locations.Length;
+            var loc = locations[locIdx];
+            var (lat, lng) = coords[locIdx];
+            var img = images[idx % images.Length];
+
+            var ad = new Advertisement
+            {
+                Id = Guid.NewGuid(),
+                Title = $"Demo Item #{idx}",
+                Description = $"Demo description for item #{idx}. Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
+                Price = (decimal)Math.Round(rnd.NextDouble() * 1000, 2),
+                CreatedAt = now.AddMinutes(-idx),
+                CreatedBy = u,
+                Category = cat,
+                Location = loc,
+                ImageUrl = img,
+                Latitude = lat,
+                Longitude = lng,
+                Address = loc,
+                City = loc.Split(',')[0],
+                Country = "USA"
+            };
+
+            await _repo.CreateAsync(ad, ct);
+        }
+    }
+}

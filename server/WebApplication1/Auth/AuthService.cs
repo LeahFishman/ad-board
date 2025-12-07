@@ -1,0 +1,39 @@
+using Microsoft.Extensions.Options;
+
+namespace WebApplication1.Auth;
+
+public interface IAuthService
+{
+    AuthUser? ValidateUser(string userName, string password);
+}
+
+public class AuthService : IAuthService
+{
+    private readonly List<AuthUser> _configUsers;
+    private readonly IAuthUserStore _store;
+
+    // Bind directly to the list of users from configuration and inject file store
+    public AuthService(IOptions<List<AuthUser>> usersOptions, IAuthUserStore store)
+    {
+        _configUsers = usersOptions.Value ?? new List<AuthUser>();
+        _store = store;
+    }
+
+    public AuthUser? ValidateUser(string userName, string password)
+    {
+        if (string.IsNullOrWhiteSpace(userName) || string.IsNullOrWhiteSpace(password))
+            return null;
+
+        // Check file-backed users first
+        var storeUsers = _store.GetUsersAsync().GetAwaiter().GetResult();
+        var user = storeUsers.FirstOrDefault(u => string.Equals(u.UserName, userName, StringComparison.OrdinalIgnoreCase));
+        if (user is null)
+        {
+            // Fallback to configuration users
+            user = _configUsers.FirstOrDefault(u => string.Equals(u.UserName, userName, StringComparison.OrdinalIgnoreCase));
+        }
+        if (user is null) return null;
+        if (!string.Equals(user.Password, password)) return null; // plain-text compare for local-only dev
+        return user;
+    }
+}

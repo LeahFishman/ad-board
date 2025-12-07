@@ -1,0 +1,120 @@
+﻿using System.Buffers;
+using System.Text.Json;
+using WebApplication1.Models;
+
+namespace WebApplication1.Data;
+
+public interface IAdvertisementRepository
+{
+    Task<List<Advertisement>> GetAllAsync(CancellationToken ct = default);
+    Task<Advertisement?> GetByIdAsync(Guid id, CancellationToken ct = default);
+    Task<Advertisement> CreateAsync(Advertisement ad, CancellationToken ct = default);
+    Task<bool> UpdateAsync(Advertisement ad, CancellationToken ct = default);
+    Task<bool> DeleteAsync(Guid id, CancellationToken ct = default);
+    // Streaming page read without loading entire file
+    Task<List<Advertisement>> GetPageAsync(int skip, int take, CancellationToken ct = default);
+}
+
+public class AdvertisementRepository : IAdvertisementRepository
+{
+    private readonly string _filePath;
+    private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true
+    };
+
+    public AdvertisementRepository(IWebHostEnvironment env)
+    {
+        var dataDir = Path.Combine(env.ContentRootPath, "App_Data");
+        Directory.CreateDirectory(dataDir);
+        _filePath = Path.Combine(dataDir, "advertisements.json");
+        if (!File.Exists(_filePath))
+        {
+            File.WriteAllText(_filePath, "[]");
+        }
+    }
+
+    private async Task<List<Advertisement>> ReadAllAsync()
+    {
+        await using var stream = File.Open(_filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        var ads = await JsonSerializer.DeserializeAsync<List<Advertisement>>(stream, _jsonOptions) ?? new List<Advertisement>();
+        return ads;
+    }
+
+    private async Task WriteAllAsync(List<Advertisement> ads, CancellationToken ct)
+    {
+        await using var stream = new FileStream(_filePath, FileMode.Create, FileAccess.Write, FileShare.None);
+        await JsonSerializer.SerializeAsync(stream, ads, _jsonOptions, ct);
+    }
+
+    public async Task<List<Advertisement>> GetAllAsync(CancellationToken ct = default) => await ReadAllAsync();
+
+    public async Task<Advertisement?> GetByIdAsync(Guid id, CancellationToken ct = default)
+    {
+        var ads = await ReadAllAsync();
+        return ads.FirstOrDefault(a => a.Id == id);
+    }
+
+    public async Task<Advertisement> CreateAsync(Advertisement ad, CancellationToken ct = default)
+    {
+        var ads = await ReadAllAsync();
+        ad.Id = ad.Id == Guid.Empty ? Guid.NewGuid() : ad.Id;
+        ad.CreatedAt = DateTimeOffset.UtcNow;
+        ads.Add(ad);
+        await WriteAllAsync(ads, ct);
+        return ad;
+    }
+
+    public async Task<bool> UpdateAsync(Advertisement ad, CancellationToken ct = default)
+    {
+        var ads = await ReadAllAsync();
+        var index = ads.FindIndex(a => a.Id == ad.Id);
+        if (index == -1) return false;
+        ad.UpdatedAt = DateTimeOffset.UtcNow;
+        ads[index] = ad;
+        await WriteAllAsync(ads, ct);
+        return true;
+    }
+
+    public async Task<bool> DeleteAsync(Guid id, CancellationToken ct = default)
+    {
+        var ads = await ReadAllAsync();
+        var removed = ads.RemoveAll(a => a.Id == id) > 0;
+        if (!removed) return false;
+        await WriteAllAsync(ads, ct);
+        return true;
+    }
+
+    public async Task<List<Advertisement>> GetPageAsync(int skip, int take, CancellationToken ct = default)
+    {
+        // Streaming deserialization directly from FileStream without loading entire file.
+        // Uses JsonSerializer.DeserializeAsyncEnumerable<T>, which reads array elements one-by-one.
+        var results = new List<Advertisement>(Math.Min(take, 1024));
+        await using var stream = new FileStream(_filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, bufferSize: 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+        // Configure options for streaming; keep comment handling skip
+        var opts = new JsonSerializerOptions(_jsonOptions)
+        {
+            // Keep defaults; streaming enumerable respects cancellation
+        };
+
+        try
+        {
+            int index = 0;
+            await foreach (var ad in JsonSerializer.DeserializeAsyncEnumerable<Advertisement>(stream, opts, ct))
+            {
+                if (ad is null) continue; // handle potential nulls
+                if (index++ < skip) continue;
+                results.Add(ad);
+                if (results.Count >= take) break;
+            }
+        }
+        catch (JsonException)
+        {
+            // If the file is not a valid JSON array, return empty list gracefully
+            return results;
+        }
+
+        return results;
+    }
+}

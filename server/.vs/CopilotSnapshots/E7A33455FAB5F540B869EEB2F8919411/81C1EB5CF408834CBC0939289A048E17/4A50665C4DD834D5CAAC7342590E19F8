@@ -1,0 +1,46 @@
+﻿using WebApplication1.Data;
+using WebApplication1.Models;
+
+namespace WebApplication1.Services;
+
+public interface IAdsQueryService
+{
+    Task<PagedResult<AdDto>> QueryAsync(AdsQueryParameters q, CancellationToken ct = default);
+}
+
+public class AdsQueryService : IAdsQueryService
+{
+    private readonly IAdvertisementRepository _repo;
+
+    public AdsQueryService(IAdvertisementRepository repo)
+    {
+        _repo = repo;
+    }
+
+    public async Task<PagedResult<AdDto>> QueryAsync(AdsQueryParameters q, CancellationToken ct = default)
+    {
+        var pageResult = await _repo.QueryFromFileAsync(q, ct);
+        var items = pageResult.Items.Select(a => new AdDto
+        {
+            Id = a.Id,
+            Title = a.Title,
+            ShortDescription = (a.Description == null) ? string.Empty : (a.Description.Length > 200 ? a.Description.Substring(0, 200) + "..." : a.Description),
+            Category = a.Category,
+            Location = a.Location,
+            CreatedAt = a.CreatedAt,
+            ImageUrl = a.ImageUrl,
+            UserName = a.CreatedBy,
+            Latitude = a.Latitude,
+            Longitude = a.Longitude,
+            Address = a.Address
+        }).ToList();
+
+        return new PagedResult<AdDto>
+        {
+            Items = items,
+            TotalCount = pageResult.TotalCount,
+            Page = pageResult.Page,
+            PageSize = pageResult.PageSize
+        };
+    }
+}

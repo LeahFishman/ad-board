@@ -1,0 +1,32 @@
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using WebApplication1.Models;
+using WebApplication1.Services;
+
+namespace WebApplication1.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+[Authorize] // Require auth by default; allow anonymous if needed
+public class AdsController : ControllerBase
+{
+    private readonly IAdsQueryService _service;
+
+    public AdsController(IAdsQueryService service)
+    {
+        _service = service;
+    }
+
+    [HttpGet]
+    [AllowAnonymous] // listing can be public
+    public async Task<ActionResult<PagedResult<AdDto>>> Get([FromQuery] AdsQueryParameters query, CancellationToken ct)
+    {
+        // Validate paging
+        if (query.Page < 1) query.Page = 1;
+        if (query.PageSize < 1) query.PageSize = 20;
+        if (query.PageSize > 100) query.PageSize = 100;
+
+        var result = await _service.QueryAsync(query, ct);
+        return Ok(result);
+    }
+}

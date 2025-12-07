@@ -1,0 +1,14 @@
+<section class="home">
+  <h1>Welcome</h1>
+  <button class="pill" (click)="toggle()">Toggle List</button>
+
+  @if (show()) {
+    <ul class="links">
+      @for (item of items(); track item.title) {
+        <li>
+          <a [href]="item.link" target="_blank" rel="noopener">{{ item.title }}</a>
+        </li>
+      }
+    </ul>
+  }
+</section>
