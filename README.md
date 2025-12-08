@@ -61,3 +61,27 @@ Pop-Location
 
 ## License
 Internal project; no public license specified.
+
+# Users
+[
+  {
+    "userName": "admin",
+    "password": "11",
+    "role": "Admin"
+  },
+  {
+    "userName": "test",
+    "password": "11",
+    "role": "Editor"
+  },
+  {
+    "userName": "testuser",
+    "password": "test",
+    "role": "Editor"
+  },
+  {
+    "userName": "tt",
+    "password": "33",
+    "role": "Editor"
+  }
+]
