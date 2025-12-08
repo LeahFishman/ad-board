@@ -3,7 +3,7 @@
 A simple neighborhood posts board with an Angular client and ASP.NET Core backend.
 
 ## Stack
-- Client: Angular 20 (standalone components, Material, signals), RxJS
+- Client: Angular 20 (standalone components, Material, signals)
 - Server: ASP.NET Core 9 Web API, JWT auth
 
 ## Project Structure
